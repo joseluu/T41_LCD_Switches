@@ -1,47 +1,90 @@
 #include <Arduino.h>
-#define GPIO_BCKL 27
-#include <esp32_smartdisplay.h>
 #include <lvgl.h>
+#include <Arduino_GFX_Library.h>
 #include <Wire.h>
 
 #include "esp_chip_info.h"
 #include "esp_log.h"
 
-/*how to use the smart-display library
-in the platformio project directory do:
-git clone https://github.com/rzeldent/platformio-espressif32-sunton.git boards
+/*******************************************************************************
+ * Touch panel config
+ ******************************************************************************/
+#include "touch.h"
+#include "button_3_wip_2.h"
 
-platforio.ini should containt:
-[env:esp32-2432S032C]
-platform = espressif32
-board = esp32-2432S032C
-framework = arduino
-monitor_speed = 115200
-lib_deps =
-    rzeldent/esp32_smartdisplay
-    lvgl/lvgl
+/*******************************************************************************
+ * Display config - ESP32-2432S032C (CYD 3.2")
+ ******************************************************************************/
+#define TFT_BL 27
 
-adjust configuration file
-the file lv_conf.h should be taken from the include subdirectory
-it originally came from: https://github.com/nu1504ta0609sa0902/CYD35_practice_project/blob/main/_Templates/lv_conf.h
-and copied into .pio/libdeps/esp32-2432S032C/lvgl
+#if defined(DISPLAY_DEV_KIT)
+Arduino_GFX *gfx = create_default_Arduino_GFX();
+#else
+Arduino_DataBus *bus = new Arduino_ESP32SPI(2 /* DC */, 15 /* CS */, 14 /* SCK */, 13 /* MOSI */, GFX_NOT_DEFINED /* MISO */);
+Arduino_GFX *gfx = new Arduino_ST7789(bus, -1 /* RST */, 3 /* rotation */, true /* IPS */);
+#endif
 
-// */
-#define I2C_SLAVE_ADDR 0x20  // Base address for emulated MCP23017; handles 0x20 and 0x21
-#define SCREEN_WIDTH  240
-#define SCREEN_HEIGHT 320
+/*******************************************************************************
+ * LVGL display setup
+ ******************************************************************************/
+static uint32_t screenWidth;
+static uint32_t screenHeight;
+static lv_disp_draw_buf_t draw_buf;
+static lv_color_t *disp_draw_buf;
+static lv_disp_drv_t disp_drv;
+
+/* Display flushing */
+void my_disp_flush(lv_disp_drv_t *disp, const lv_area_t *area, lv_color_t *color_p)
+{
+    uint32_t w = (area->x2 - area->x1 + 1);
+    uint32_t h = (area->y2 - area->y1 + 1);
+
+#if (LV_COLOR_16_SWAP != 0)
+    gfx->draw16bitBeRGBBitmap(area->x1, area->y1, (uint16_t *)&color_p->full, w, h);
+#else
+    gfx->draw16bitRGBBitmap(area->x1, area->y1, (uint16_t *)&color_p->full, w, h);
+#endif
+
+    lv_disp_flush_ready(disp);
+}
+
+void my_touchpad_read(lv_indev_drv_t *indev_driver, lv_indev_data_t *data)
+{
+    if (touch_has_signal())
+    {
+        if (touch_touched())
+        {
+            data->state = LV_INDEV_STATE_PR;
+            data->point.x = touch_last_x;
+            data->point.y = touch_last_y;
+        }
+        else if (touch_released())
+        {
+            data->state = LV_INDEV_STATE_REL;
+        }
+    }
+    else
+    {
+        data->state = LV_INDEV_STATE_REL;
+    }
+}
+
+/*******************************************************************************
+ * Button grid configuration
+ ******************************************************************************/
+#define I2C_SLAVE_ADDR 0x20
+#define SCREEN_WIDTH  320
+#define SCREEN_HEIGHT 240
 #define NUM_ROWS 6
 #define NUM_COLS 3
-#define BTN_WIDTH  (SCREEN_WIDTH  / NUM_COLS)   // 80
-#define BTN_HEIGHT (SCREEN_HEIGHT / NUM_ROWS)   // ~53
 
-// ────────────────────────────────────────────────
-//  ONE SINGLE SHARED ICON / SYMBOL IMAGE
-// ────────────────────────────────────────────────
-#define BUTTON_IMAGE button_3_wip_2
-LV_IMAGE_DECLARE(BUTTON_IMAGE);
+/* In rotation 3 (landscape), width=320, height=240.
+ * We want 6 rows x 3 cols displayed in portrait orientation.
+ * With rotation 3, the long side is horizontal (320).
+ * Button grid: 3 columns across 320px, 6 rows across 240px. */
+#define BTN_WIDTH  (SCREEN_WIDTH  / NUM_COLS)   // ~106
+#define BTN_HEIGHT (SCREEN_HEIGHT / NUM_ROWS)   // 40
 
-// Array of labels for the 18 buttons
 static const char * button_labels[18] = {
     "Heat",   "Fan",    "Light",
     "Mode",   "Timer",  "Auto",
@@ -51,7 +94,6 @@ static const char * button_labels[18] = {
     "Night",  "Day",    "Eco"
 };
 
-// Which buttons are toggle (true) vs momentary (false)
 static const bool is_toggle[18] = {
     true,  false, true,
     false, true,  false,
@@ -59,26 +101,6 @@ static const bool is_toggle[18] = {
     false, true,  false,
     true,  false, true,
     false, true,  false
-};
-
-// Per-button active/checked color
-static const lv_color_t active_colors[18] = {
-    lv_color_hex(0x006600), lv_color_hex(0x006600), lv_color_hex(0x006600),
-    lv_color_hex(0x006600), lv_color_hex(0x006600), lv_color_hex(0x006600),
-    lv_color_hex(0x006600), lv_color_hex(0x006600), lv_color_hex(0x006600),
-    lv_color_hex(0x006600), lv_color_hex(0x006600), lv_color_hex(0x006600),
-    lv_color_hex(0x006600), lv_color_hex(0x006600), lv_color_hex(0x006600),
-    lv_color_hex(0x006600), lv_color_hex(0x006600), lv_color_hex(0x006600)
-};
-
-// Per-button pressed color
-static const lv_color_t pressed_colors[18] = {
-    lv_color_hex(0x009900), lv_color_hex(0x009900), lv_color_hex(0x009900),
-    lv_color_hex(0x009900), lv_color_hex(0x009900), lv_color_hex(0x009900),
-    lv_color_hex(0x009900), lv_color_hex(0x009900), lv_color_hex(0x009900),
-    lv_color_hex(0x009900), lv_color_hex(0x009900), lv_color_hex(0x009900),
-    lv_color_hex(0x009900), lv_color_hex(0x009900), lv_color_hex(0x009900),
-    lv_color_hex(0x009900), lv_color_hex(0x009900), lv_color_hex(0x009900)
 };
 
 lv_obj_t * buttons[18];
@@ -108,15 +130,6 @@ void detect_chip(void) {
 // ────────────────────────────────────────────────
 // MCP23017 Emulation
 // ────────────────────────────────────────────────
-// We emulate two MCP23017 at 0x20 and 0x21.
-// Only GPIOA (0x12) and GPIOB (0x13) reads are supported.
-// Button states mapped to bits: active = 0 (low), inactive = 1 (high).
-// Mapping:
-// 0x20 GPIOA: buttons 0-7
-// 0x20 GPIOB: buttons 8-15
-// 0x21 GPIOA: buttons 16-17 (bits 0-1), rest 1
-// 0x21 GPIOB: all 1 (unused)
-
 void receiveEvent(int numBytes) {
     if (numBytes == 0) return;
     reg = Wire.read();
@@ -152,112 +165,174 @@ void requestEvent() {
 // ────────────────────────────────────────────────
 // Button event callback
 // ────────────────────────────────────────────────
-// For toggle buttons: LVGL handles checked state via LV_OBJ_FLAG_CHECKABLE.
-// For momentary buttons: just log the click.
-static void btn_event_cb(lv_event_t * e) {
-    lv_event_code_t code = lv_event_get_code(e);
-    int idx = (intptr_t)lv_event_get_user_data(e);
+/* Structure for button user data */
+typedef struct {
+    lv_obj_t * bg;
+    int index;
+    bool toggle_state;
+} btn_data_t;
 
-    if (code == LV_EVENT_CLICKED) {
-        if (is_toggle[idx]) {
-            bool checked = lv_obj_has_state(buttons[idx], LV_STATE_CHECKED);
-            Serial.printf("Button %d (%s) toggled -> %s\n", idx, button_labels[idx],
-                          checked ? "CHECKED" : "UNCHECKED");
-        } else {
-            Serial.printf("Button %d (%s) clicked\n", idx, button_labels[idx]);
+static btn_data_t btn_data[18];
+
+static void btn_event_cb(lv_event_t * e)
+{
+    lv_event_code_t code = lv_event_get_code(e);
+    btn_data_t * data = (btn_data_t *)lv_event_get_user_data(e);
+    int idx = data->index;
+
+    if (is_toggle[idx]) {
+        /* Toggle button: 3 colors - gray (inactive), green (active), bright green (pressed) */
+        if (code == LV_EVENT_PRESSED) {
+            lv_obj_set_style_bg_color(data->bg, lv_color_hex(0x009900), 0);
+        }
+        else if (code == LV_EVENT_CLICKED) {
+            data->toggle_state = !data->toggle_state;
+            if (data->toggle_state) {
+                lv_obj_set_style_bg_color(data->bg, lv_color_hex(0x006600), 0);
+                Serial.printf("Button %d (%s) toggled -> CHECKED\n", idx, button_labels[idx]);
+            } else {
+                lv_obj_set_style_bg_color(data->bg, lv_color_hex(0x2A2A2A), 0);
+                Serial.printf("Button %d (%s) toggled -> UNCHECKED\n", idx, button_labels[idx]);
+            }
+        }
+        else if (code == LV_EVENT_RELEASED || code == LV_EVENT_PRESS_LOST) {
+            if (data->toggle_state) {
+                lv_obj_set_style_bg_color(data->bg, lv_color_hex(0x006600), 0);
+            } else {
+                lv_obj_set_style_bg_color(data->bg, lv_color_hex(0x2A2A2A), 0);
+            }
+        }
+    } else {
+        /* Momentary button: green when pressed, dark when released */
+        if (code == LV_EVENT_PRESSED) {
+            lv_obj_set_style_bg_color(data->bg, lv_color_hex(0x009900), 0);
+            Serial.printf("Button %d (%s) pressed\n", idx, button_labels[idx]);
+        }
+        else if (code == LV_EVENT_RELEASED || code == LV_EVENT_PRESS_LOST) {
+            lv_obj_set_style_bg_color(data->bg, lv_color_hex(0x2A2A2A), 0);
+            Serial.printf("Button %d (%s) released\n", idx, button_labels[idx]);
         }
     }
 }
 
 // ────────────────────────────────────────────────
-void setup() {
-    detect_chip();
-    smartdisplay_init();
-
+void setup()
+{
     Serial.begin(115200);
-    delay(1000);
+    Serial.println("6x3 Button Grid - LVGL 8.3.11");
 
-    auto disp = lv_display_get_default();
-    Serial.printf("LVGL resolution = %dx%d\n",
-                  lv_display_get_horizontal_resolution(disp),
-                  lv_display_get_vertical_resolution(disp));
+    detect_chip();
 
-    Serial.printf("PsRam size: %d bytes\n", ESP.getPsramSize());
+    // Init Display
+    gfx->begin();
+#ifdef TFT_BL
+    pinMode(TFT_BL, OUTPUT);
+    digitalWrite(TFT_BL, HIGH);
+    analogWrite(TFT_BL, 100);
+#endif
+
+    gfx->fillScreen(RGB565_RED);
+    delay(500);
+    gfx->fillScreen(RGB565_GREEN);
+    delay(500);
+    gfx->fillScreen(RGB565_BLUE);
+    delay(500);
+    gfx->fillScreen(RGB565_BLACK);
+
+    lv_init();
+    delay(20);
+    touch_init();
+
+    screenWidth = gfx->width();
+    screenHeight = gfx->height();
+
+    Serial.printf("Screen: %dx%d\n", screenWidth, screenHeight);
     Serial.printf("Free heap: %d bytes\n", ESP.getFreeHeap());
 
-    // Partial rendering buffer - 20 lines for better image rendering
-    const uint32_t lines = 20;
-    static lv_color_t buf1[240 * 20];
+#ifdef ESP32
+    disp_draw_buf = (lv_color_t *)heap_caps_malloc(sizeof(lv_color_t) * screenWidth * screenHeight / 2, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+#else
+    disp_draw_buf = (lv_color_t *)malloc(sizeof(lv_color_t) * screenWidth * screenHeight / 2);
+#endif
 
-    lv_display_set_buffers(disp,
-                           buf1,
-                           NULL,
-                           240 * lines,
-                           LV_DISPLAY_RENDER_MODE_PARTIAL);
+    if (!disp_draw_buf)
+    {
+        Serial.println("LVGL disp_draw_buf allocate failed!");
+        return;
+    }
 
-    lv_display_set_rotation(disp, LV_DISPLAY_ROTATION_0);
+    lv_disp_draw_buf_init(&draw_buf, disp_draw_buf, NULL, screenWidth * screenHeight / 2);
+
+    /* Initialize the display driver */
+    lv_disp_drv_init(&disp_drv);
+    disp_drv.hor_res = screenWidth;
+    disp_drv.ver_res = screenHeight;
+    disp_drv.flush_cb = my_disp_flush;
+    disp_drv.draw_buf = &draw_buf;
+    lv_disp_drv_register(&disp_drv);
+
+    /* Initialize the touch input driver */
+    static lv_indev_drv_t indev_drv;
+    lv_indev_drv_init(&indev_drv);
+    indev_drv.type = LV_INDEV_TYPE_POINTER;
+    indev_drv.read_cb = my_touchpad_read;
+    lv_indev_drv_register(&indev_drv);
 
     // I2C slave setup (commented out - enable when needed)
     // Wire.begin(I2C_SLAVE_ADDR);
     // Wire.onReceive(receiveEvent);
     // Wire.onRequest(requestEvent);
 
-    lv_obj_t * scr = lv_scr_act();
-
-    // Dark screen background
-    lv_obj_set_style_bg_color(scr, lv_color_hex(0x000000), 0);
-    lv_obj_set_style_bg_opa(scr, LV_OPA_COVER, 0);
-
-    // ── Create all 18 buttons in a 6x3 grid
+    // ── Create all 18 buttons in a 6x3 grid ──
+    // Following the working project pattern: background obj + imgbtn on top
     for (int i = 0; i < 18; i++) {
         int row = i / NUM_COLS;
         int col = i % NUM_COLS;
 
-        lv_obj_t * btn = lv_button_create(scr);
-        buttons[i] = btn;
+        // Background object for color state
+        lv_obj_t * bg = lv_obj_create(lv_scr_act());
+        lv_obj_set_pos(bg, col * BTN_WIDTH, row * BTN_HEIGHT);
+        lv_obj_set_size(bg, BTN_WIDTH, BTN_HEIGHT);
+        lv_obj_set_style_bg_color(bg, lv_color_hex(0x2A2A2A), 0);  // dark gray inactive
+        lv_obj_set_style_bg_opa(bg, LV_OPA_COVER, 0);
+        lv_obj_set_style_border_width(bg, 1, 0);
+        lv_obj_set_style_border_color(bg, lv_color_hex(0x404040), 0);
+        lv_obj_set_style_border_opa(bg, LV_OPA_70, 0);
+        lv_obj_set_style_radius(bg, 0, 0);
+        lv_obj_set_style_pad_all(bg, 0, 0);
+        lv_obj_clear_flag(bg, LV_OBJ_FLAG_SCROLLABLE);
 
-        lv_obj_set_pos(btn, col * BTN_WIDTH, row * BTN_HEIGHT);
-        lv_obj_set_size(btn, BTN_WIDTH, BTN_HEIGHT);
+        // Image button on top of background
+        lv_obj_t * img_btn = lv_imgbtn_create(bg);
+        lv_imgbtn_set_src(img_btn, LV_IMGBTN_STATE_RELEASED, &button_3_wip_2, NULL, NULL);
+        lv_imgbtn_set_src(img_btn, LV_IMGBTN_STATE_PRESSED, &button_3_wip_2, NULL, NULL);
+        lv_obj_align(img_btn, LV_ALIGN_CENTER, 0, 0);
 
-        // Background image overlay
-        lv_obj_set_style_bg_opa(btn, LV_OPA_COVER, 0);
-        lv_obj_set_style_bg_image_src(btn, &BUTTON_IMAGE, 0);
-        lv_obj_set_style_bg_image_opa(btn, LV_OPA_COVER, 0);
+        // Transparent imgbtn background so bg color shows through
+        lv_obj_set_style_bg_opa(img_btn, LV_OPA_TRANSP, 0);
+        lv_obj_set_style_shadow_width(img_btn, 0, 0);
 
-        // Default (inactive) background color - dark gray
-        lv_obj_set_style_bg_color(btn, lv_color_hex(0x2A2A2A), 0);
-
-        // Pressed state color
-        lv_obj_set_style_bg_color(btn, pressed_colors[i], LV_STATE_PRESSED);
-
-        if (is_toggle[i]) {
-            lv_obj_add_flag(btn, LV_OBJ_FLAG_CHECKABLE);
-            // Checked (active) state color
-            lv_obj_set_style_bg_color(btn, active_colors[i], LV_STATE_CHECKED);
-        }
-
-        // Remove default padding/radius for tight grid
-        lv_obj_set_style_radius(btn, 0, 0);
-        lv_obj_set_style_pad_all(btn, 0, 0);
-        lv_obj_set_style_border_width(btn, 1, 0);
-        lv_obj_set_style_border_color(btn, lv_color_hex(0x404040), 0);
-        lv_obj_set_style_border_opa(btn, LV_OPA_70, 0);
-
-        // Text label on top
-        lv_obj_t * label = lv_label_create(btn);
+        // Text label
+        lv_obj_t * label = lv_label_create(img_btn);
         lv_label_set_text(label, button_labels[i]);
         lv_obj_set_style_text_color(label, lv_color_hex(0xE8E8E8), 0);
-        lv_obj_set_style_text_opa(label, LV_OPA_COVER, 0);
         lv_obj_center(label);
 
+        // Setup button data
+        btn_data[i].bg = bg;
+        btn_data[i].index = i;
+        btn_data[i].toggle_state = false;
+        buttons[i] = img_btn;
+
         // Event callback
-        lv_obj_add_event_cb(btn, btn_event_cb, LV_EVENT_CLICKED, (void*)(intptr_t)i);
+        lv_obj_add_event_cb(img_btn, btn_event_cb, LV_EVENT_ALL, &btn_data[i]);
     }
 
     Serial.println("Setup complete - 18 buttons created");
 }
 
-void loop() {
+void loop()
+{
     lv_timer_handler();
     delay(5);
 }
