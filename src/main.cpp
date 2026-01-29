@@ -181,35 +181,35 @@ static void btn_event_cb(lv_event_t * e)
     int idx = data->index;
 
     if (is_toggle[idx]) {
-        /* Toggle button: 3 colors - gray (inactive), green (active), bright green (pressed) */
+        /* Toggle button: 3 colors - warm amber (inactive), orange (active), white (pressed) */
         if (code == LV_EVENT_PRESSED) {
-            lv_obj_set_style_bg_color(data->bg, lv_color_hex(0x009900), 0);
+            lv_obj_set_style_bg_color(data->bg, lv_color_hex(0xFFF8F0), 0);
         }
         else if (code == LV_EVENT_CLICKED) {
             data->toggle_state = !data->toggle_state;
             if (data->toggle_state) {
-                lv_obj_set_style_bg_color(data->bg, lv_color_hex(0x006600), 0);
+                lv_obj_set_style_bg_color(data->bg, lv_color_hex(0xFF6600), 0);
                 Serial.printf("Button %d (%s) toggled -> CHECKED\n", idx, button_labels[idx]);
             } else {
-                lv_obj_set_style_bg_color(data->bg, lv_color_hex(0x2A2A2A), 0);
+                lv_obj_set_style_bg_color(data->bg, lv_color_hex(0xFFE8D0), 0);
                 Serial.printf("Button %d (%s) toggled -> UNCHECKED\n", idx, button_labels[idx]);
             }
         }
         else if (code == LV_EVENT_RELEASED || code == LV_EVENT_PRESS_LOST) {
             if (data->toggle_state) {
-                lv_obj_set_style_bg_color(data->bg, lv_color_hex(0x006600), 0);
+                lv_obj_set_style_bg_color(data->bg, lv_color_hex(0xFF6600), 0);
             } else {
-                lv_obj_set_style_bg_color(data->bg, lv_color_hex(0x2A2A2A), 0);
+                lv_obj_set_style_bg_color(data->bg, lv_color_hex(0xFFE8D0), 0);
             }
         }
     } else {
-        /* Momentary button: green when pressed, dark when released */
+        /* Momentary button: white when pressed, warm amber when released */
         if (code == LV_EVENT_PRESSED) {
-            lv_obj_set_style_bg_color(data->bg, lv_color_hex(0x009900), 0);
+            lv_obj_set_style_bg_color(data->bg, lv_color_hex(0xFFF8F0), 0);
             Serial.printf("Button %d (%s) pressed\n", idx, button_labels[idx]);
         }
         else if (code == LV_EVENT_RELEASED || code == LV_EVENT_PRESS_LOST) {
-            lv_obj_set_style_bg_color(data->bg, lv_color_hex(0x2A2A2A), 0);
+            lv_obj_set_style_bg_color(data->bg, lv_color_hex(0xFFE8D0), 0);
             Serial.printf("Button %d (%s) released\n", idx, button_labels[idx]);
         }
     }
@@ -230,14 +230,6 @@ void setup()
     digitalWrite(TFT_BL, HIGH);
     analogWrite(TFT_BL, 100);
 #endif
-
-    gfx->fillScreen(RGB565_RED);
-    delay(500);
-    gfx->fillScreen(RGB565_GREEN);
-    delay(500);
-    gfx->fillScreen(RGB565_BLUE);
-    delay(500);
-    gfx->fillScreen(RGB565_BLACK);
 
     lv_init();
     delay(20);
@@ -293,7 +285,7 @@ void setup()
         lv_obj_t * bg = lv_obj_create(lv_scr_act());
         lv_obj_set_pos(bg, col * BTN_WIDTH, row * BTN_HEIGHT);
         lv_obj_set_size(bg, BTN_WIDTH, BTN_HEIGHT);
-        lv_obj_set_style_bg_color(bg, lv_color_hex(0x2A2A2A), 0);  // dark gray inactive
+        lv_obj_set_style_bg_color(bg, lv_color_hex(0xFFE8D0), 0);  // warm amber inactive
         lv_obj_set_style_bg_opa(bg, LV_OPA_COVER, 0);
         lv_obj_set_style_border_width(bg, 1, 0);
         lv_obj_set_style_border_color(bg, lv_color_hex(0x404040), 0);

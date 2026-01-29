@@ -107,3 +107,19 @@ uploaded successfully to COM9.
 - Sketch: 566743 bytes (43% of 1310720)
 - Global variables: 73688 bytes (22% of 327680)
 - Upload: COM9, ESP32-D0WD-V3 rev 3.1
+
+## 1. remove extras — DONE 2026-01-29 18:48
+
+1. Removed the 3 startup color test screens (red, green, blue + delays)
+   from `setup()` in `src/main.cpp`.
+
+2. Disabled FPS/CPU stats by setting `LV_USE_PERF_MONITOR` to 0 in
+   `Arduino/libraries/lv_conf.h`.
+
+## 2. improve button background colors — DONE 2026-01-29 18:50
+
+Changed button background colors in `src/main.cpp`:
+
+- Inactive: `0xFFE8D0` — pale warm amber (undervoltaged incandescent bulb)
+- Pressed: `0xFFF8F0` — warm white (normally lit incandescent bulb)
+- Active/checked: `0xFF6600` — orange (neon indicator)

@@ -13,4 +13,11 @@ use the lv_conf.h from here https://raw.githubusercontent.com/joseluu/Demo-CYD-3
 The hardware type to be used is "ESP32 Dev Module"
 write your report in docs/done_changes.md write the finish time
 use the shell command date to get the actual time
-
+## 1. remove extras
+Remove the initial 3 full colored screens that appear when starting.
+Disable via macro the FPS and CPU stats in the lower right corner
+## 2. improve button background colors
+The inactive color should pale white with a light redish yellow glow
+like an undervoltaged incandescent bulb. Pressed color should be
+white like a normally lighted incandescent bulb. Active color
+should be orange like a neon indicator.
