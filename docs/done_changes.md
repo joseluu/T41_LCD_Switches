@@ -123,3 +123,43 @@ Changed button background colors in `src/main.cpp`:
 - Inactive: `0xFFE8D0` — pale warm amber (undervoltaged incandescent bulb)
 - Pressed: `0xFFF8F0` — warm white (normally lit incandescent bulb)
 - Active/checked: `0xFF6600` — orange (neon indicator)
+
+## 3. improve button bitmap — DONE 2026-01-29 23:35
+
+Replaced button bitmap with user-provided `button_4_106x40.c`
+(pre-converted LVGL 8 file, 106x40, LV_IMG_CF_RGB565A8, 12720 bytes).
+
+1. Copied `/c/Users/josel/Downloads/button_4_106x40.c` to `src/`.
+2. Fixed `#include` to use `<lvgl.h>` (same Arduino build issue as before).
+3. Created `src/button_4_106x40.h` header.
+4. Updated `src/main.cpp`: include and `lv_imgbtn_set_src` references
+   changed from `button_3_wip_2` to `button_4_106x40`.
+5. Old `src/button_3_wip_2.c` and `.h` kept but no longer referenced.
+
+## 4. rotate display and fix touch — DONE 2026-01-30 09:56 UTC
+
+### 4a. Rotate display counterclockwise to portrait
+
+Changed display orientation from landscape (rotation 3, 320x240) to
+portrait counterclockwise (rotation 2, 240x320).
+
+1. `src/main.cpp`: Changed `Arduino_ST7789` rotation from `3` to `2`.
+2. `src/main.cpp`: Updated `SCREEN_WIDTH` from 320 to 240,
+   `SCREEN_HEIGHT` from 240 to 320.
+3. Updated comments to reflect rotation 2 portrait layout.
+4. Button size changed from 106x40 to 80x53 pixels
+   (240/3=80 wide, 320/6=53 tall).
+
+### 4b. Fix touch coordinates for new rotation
+
+Updated GT911 touch config in `src/touch.cpp` for rotation 2:
+
+1. Changed `TOUCH_GT911_ROTATION` from `ROTATION_RIGHT` to
+   `ROTATION_INVERTED`.
+2. Changed `TOUCH_MAP_X1` from 320 to 240, `TOUCH_MAP_Y1` from 240
+   to 320 (matching new screen dimensions).
+
+### 4c. Black button text
+
+Changed label text color in `src/main.cpp` from light gray (`0xE8E8E8`)
+to black (`0x000000`).

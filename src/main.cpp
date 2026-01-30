@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#define LV_USE_PERF_MONITOR 0
 #include <lvgl.h>
 #include <Arduino_GFX_Library.h>
 #include <Wire.h>
@@ -10,7 +11,7 @@
  * Touch panel config
  ******************************************************************************/
 #include "touch.h"
-#include "button_3_wip_2.h"
+#include "button_4_106x40.h"
 
 /*******************************************************************************
  * Display config - ESP32-2432S032C (CYD 3.2")
@@ -21,7 +22,7 @@
 Arduino_GFX *gfx = create_default_Arduino_GFX();
 #else
 Arduino_DataBus *bus = new Arduino_ESP32SPI(2 /* DC */, 15 /* CS */, 14 /* SCK */, 13 /* MOSI */, GFX_NOT_DEFINED /* MISO */);
-Arduino_GFX *gfx = new Arduino_ST7789(bus, -1 /* RST */, 3 /* rotation */, true /* IPS */);
+Arduino_GFX *gfx = new Arduino_ST7789(bus, -1 /* RST */, 2 /* rotation */, true /* IPS */);
 #endif
 
 /*******************************************************************************
@@ -73,25 +74,23 @@ void my_touchpad_read(lv_indev_drv_t *indev_driver, lv_indev_data_t *data)
  * Button grid configuration
  ******************************************************************************/
 #define I2C_SLAVE_ADDR 0x20
-#define SCREEN_WIDTH  320
-#define SCREEN_HEIGHT 240
+#define SCREEN_WIDTH  240
+#define SCREEN_HEIGHT 320
 #define NUM_ROWS 6
 #define NUM_COLS 3
 
-/* In rotation 3 (landscape), width=320, height=240.
- * We want 6 rows x 3 cols displayed in portrait orientation.
- * With rotation 3, the long side is horizontal (320).
- * Button grid: 3 columns across 320px, 6 rows across 240px. */
-#define BTN_WIDTH  (SCREEN_WIDTH  / NUM_COLS)   // ~106
-#define BTN_HEIGHT (SCREEN_HEIGHT / NUM_ROWS)   // 40
+/* In rotation 2 (portrait), width=240, height=320.
+ * Button grid: 3 columns across 240px, 6 rows across 320px. */
+#define BTN_WIDTH  (SCREEN_WIDTH  / NUM_COLS)   // 80
+#define BTN_HEIGHT (SCREEN_HEIGHT / NUM_ROWS)   // 53
 
 static const char * button_labels[18] = {
-    "Heat",   "Fan",    "Light",
-    "Mode",   "Timer",  "Auto",
-    "Power",  "Up",     "Down",
-    "Menu",   "Set",    "Reset",
-    "A",      "B",      "C",
-    "Night",  "Day",    "Eco"
+    "Select", "Menu",    "Band+",
+    "Zoom",   "Display", "Band-",
+    "Mode",   "Demod",   "Main Incr",
+    "Noise",  "Notch",   "F Tun Inc",
+    "Filter", "Decode",  "Dir Freq",
+    "User 1", "User 2",  "User 3"
 };
 
 static const bool is_toggle[18] = {
@@ -296,8 +295,8 @@ void setup()
 
         // Image button on top of background
         lv_obj_t * img_btn = lv_imgbtn_create(bg);
-        lv_imgbtn_set_src(img_btn, LV_IMGBTN_STATE_RELEASED, &button_3_wip_2, NULL, NULL);
-        lv_imgbtn_set_src(img_btn, LV_IMGBTN_STATE_PRESSED, &button_3_wip_2, NULL, NULL);
+        lv_imgbtn_set_src(img_btn, LV_IMGBTN_STATE_RELEASED, &button_4_106x40, NULL, NULL);
+        lv_imgbtn_set_src(img_btn, LV_IMGBTN_STATE_PRESSED, &button_4_106x40, NULL, NULL);
         lv_obj_align(img_btn, LV_ALIGN_CENTER, 0, 0);
 
         // Transparent imgbtn background so bg color shows through
@@ -307,7 +306,7 @@ void setup()
         // Text label
         lv_obj_t * label = lv_label_create(img_btn);
         lv_label_set_text(label, button_labels[i]);
-        lv_obj_set_style_text_color(label, lv_color_hex(0xE8E8E8), 0);
+        lv_obj_set_style_text_color(label, lv_color_hex(0x000000), 0);
         lv_obj_center(label);
 
         // Setup button data

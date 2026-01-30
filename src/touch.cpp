@@ -29,10 +29,10 @@ extern Arduino_GFX *gfx;
  #define TOUCH_GT911_SDA 33
  #define TOUCH_GT911_INT -1
  #define TOUCH_GT911_RST 25
- #define TOUCH_GT911_ROTATION ROTATION_RIGHT//ROTATION_NORMAL
- #define TOUCH_MAP_X1 320
+ #define TOUCH_GT911_ROTATION ROTATION_INVERTED//rotation 2: portrait counterclockwise
+ #define TOUCH_MAP_X1 240
  #define TOUCH_MAP_X2 0
- #define TOUCH_MAP_Y1 240
+ #define TOUCH_MAP_Y1 320
  #define TOUCH_MAP_Y2 0
 
 #elif defined(TOUCH_XPT2046)

@@ -21,3 +21,7 @@ The inactive color should pale white with a light redish yellow glow
 like an undervoltaged incandescent bulb. Pressed color should be
 white like a normally lighted incandescent bulb. Active color
 should be orange like a neon indicator.
+## 3. improve button bitmap
+Find or generate a button bitmap with some transparency to look like
+a plastic translucent push button. If python is needed source
+~/hobby_w/jupyter_nbs/setup.sh to have it in the path
