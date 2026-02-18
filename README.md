@@ -35,6 +35,14 @@ Buttons support both momentary and toggle modes. Toggle buttons change the backg
 - **Resolution**: 240x320 (portrait, rotation 2)
 - **Communication**: I2C slave (MCP23017 emulation) to the T41 main board
 
+## I2C communications
+
+ - side connector P3 outputs gnd, io35, io22 (SCL), io21(SDA)
+ - connect SCL and SDA from this board to Teensy pin 19 (SCL) and pin 18 (SDA)
+ - the ESP32 cannot emulate 2 slave devices MCP23017 therefore only address 0x20 is used
+ - see manufacturer documentation: https://www.microchip.com/en-us/product/mcp23017
+ - device emulates a 32 bits MCP23017 with 2 extra 8 bits ports: GPIOC and GPIOD
+
 ## Software
 
 - LVGL 8.3.11 for UI rendering
