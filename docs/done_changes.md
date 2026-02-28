@@ -163,3 +163,46 @@ Updated GT911 touch config in `src/touch.cpp` for rotation 2:
 
 Changed label text color in `src/main.cpp` from light gray (`0xE8E8E8`)
 to black (`0x000000`).
+
+## 4. implement I2C slave (pico_frontpanel protocol) — DONE 2026-02-28 01:06
+
+Implemented I2C slave on Wire1 (GPIO21=SDA, GPIO22=SCL, addr=0x20),
+compatible with the pico_frontpanel protocol used by the T41 transceiver.
+
+### Changes in src/main.cpp
+
+1. Added I2C slave constants: `I2C_SLAVE_ADDR=0x20`, `I2C_SLAVE_SDA=21`,
+   `I2C_SLAVE_SCL=22`, `I2C_INT_PIN=26`.
+2. Implemented pico_frontpanel register map (REG_CONFIG through REG_LED).
+3. `i2c_slave_receive()`: handles REG_CONFIG write to configure INT polarity.
+4. `i2c_slave_request()`: responds to REG_INT_MASK, REG_TOUCH (button event),
+   REG_ENCODER, REG_SWITCH reads; clears INT after master reads.
+5. `i2c_report_button(index, state)`: called from button event callback to
+   assert the INT line and queue button event for master to read.
+6. `i2c_slave_init()`: configures GPIO26 as active-LOW INT output,
+   initializes Wire1 as slave.
+7. Button event callback (`btn_event_cb`) calls `i2c_report_button()` on
+   press/release/toggle.
+
+### Test program: test/front_panel_i2c/front_panel_i2c.ino
+
+Standalone test for Heltec WiFi Kit 32 acting as I2C master (addr 0x20).
+Displays button events on built-in SSD1306 OLED.
+
+### Bug fix: touch broken after Wire1 init — DONE 2026-02-28 01:06
+
+**Symptom**: After adding Wire1 slave, GT911 returned x=65535 y=65535
+(0xFFFF) for all reads — I2C status byte 0xFF forced isTouched=true with
+garbage coordinates mapping to x=514 y=525 on screen.
+
+**Root cause**: In ESP32 Arduino core 3.3.6, `Wire1.begin()` in slave mode
+corrupts the already-initialized Wire (I2C bus 0) used by the GT911.
+All Wire reads returned 0xFF bytes after Wire1 was initialized.
+
+**Fix**: Call `i2c_slave_init()` (Wire1) *before* `touch_init()` (Wire)
+in `setup()`. Wire is then established fresh after Wire1, so it is not
+corrupted. No other changes required.
+
+**Board note**: GPIO26 is the audio amplifier pin on ESP32-2432S032C —
+it is safe to use as I2C INT output. GT911 CTP_INT is only pulled up to
+3.3V (no ESP32 GPIO connected), consistent with `TOUCH_GT911_INT = -1`.

@@ -51,18 +51,15 @@ void my_disp_flush(lv_disp_drv_t *disp, const lv_area_t *area, lv_color_t *color
 
 void my_touchpad_read(lv_indev_drv_t *indev_driver, lv_indev_data_t *data)
 {
-    if (touch_has_signal())
+    bool has_sig = touch_has_signal();
+    bool touched = false;
+    if (has_sig) touched = touch_touched();
+
+    if (has_sig && touched)
     {
-        if (touch_touched())
-        {
-            data->state = LV_INDEV_STATE_PR;
-            data->point.x = touch_last_x;
-            data->point.y = touch_last_y;
-        }
-        else if (touch_released())
-        {
-            data->state = LV_INDEV_STATE_REL;
-        }
+        data->state = LV_INDEV_STATE_PR;
+        data->point.x = touch_last_x;
+        data->point.y = touch_last_y;
     }
     else
     {
@@ -103,7 +100,6 @@ static const bool is_toggle[18] = {
 };
 
 lv_obj_t * buttons[18];
-uint8_t reg = 0;
 
 static const char *TAG = "CHIP_DETECT";
 
@@ -127,38 +123,101 @@ void detect_chip(void) {
 }
 
 // ────────────────────────────────────────────────
-// MCP23017 Emulation
+// Pico Front Panel Protocol — I2C Slave (Wire1)
+// Compatible with https://github.com/g0orx/pico_frontpanel
+// Slave addr 0x20  SDA=GPIO21  SCL=GPIO22
+// INT output GPIO26 (active-LOW) — wire to Teensy pin 15
 // ────────────────────────────────────────────────
-void receiveEvent(int numBytes) {
-    if (numBytes == 0) return;
-    reg = Wire.read();
-    while (Wire.available()) Wire.read();
+#define I2C_SLAVE_SDA  21
+#define I2C_SLAVE_SCL  22
+#define I2C_INT_PIN    26   // active-LOW output, connect to master INT input
+
+// Register addresses (same as pico_frontpanel)
+#define REG_CONFIG   0x00
+#define REG_RESET    0x01
+#define REG_INT_MASK 0x02
+#define REG_ENCODER  0x03
+#define REG_SWITCH   0x04
+#define REG_TOUCH    0x05  // repurposed: button_index (1B) + state (1B) + 3B pad
+#define REG_LED      0x06
+
+// Interrupt mask bits
+#define INT_TS    0x0100  // button event (touch/button slot)
+#define INT_READY 0x8000  // device ready after boot
+
+static volatile uint16_t fp_int_mask        = 0;
+static volatile uint8_t  fp_event_button    = 0xFF;
+static volatile uint8_t  fp_event_state     = 0;
+static volatile uint8_t  fp_last_reg        = 0xFF;
+static volatile bool     fp_int_active_high = false;
+
+static void fp_assert_int() {
+    digitalWrite(I2C_INT_PIN, fp_int_active_high ? HIGH : LOW);
 }
 
-void requestEvent() {
-    uint8_t value = 0xFF;
+static void fp_clear_int() {
+    fp_int_mask = 0;
+    digitalWrite(I2C_INT_PIN, fp_int_active_high ? LOW : HIGH);
+}
 
-    uint8_t states[4] = {0xFF, 0xFF, 0xFF, 0xFF};
-    for (int i = 0; i < 18; i++) {
-        bool active = false;
-        if (is_toggle[i]) {
-            active = lv_obj_has_state(buttons[i], LV_STATE_CHECKED);
-        } else {
-            active = lv_obj_has_state(buttons[i], LV_STATE_PRESSED);
-        }
-        if (active) {
-            int byte_idx = i / 8;
-            int bit_idx = i % 8;
-            states[byte_idx] &= ~(1 << bit_idx);
-        }
+void i2c_slave_receive(int num_bytes) {
+    if (num_bytes == 0) return;
+    fp_last_reg = Wire1.read();
+    num_bytes--;
+    if (fp_last_reg == REG_CONFIG && num_bytes >= 2) {
+        uint16_t cfg = Wire1.read() | ((uint16_t)Wire1.read() << 8);
+        fp_int_active_high = (cfg >> 8) & 1;
+        num_bytes -= 2;
     }
+    while (Wire1.available()) Wire1.read();
+}
 
-    if (reg == 0x12) value = states[0];
-    else if (reg == 0x13) value = states[1];
-    else if (reg == 0x22) value = states[2];
-    else if (reg == 0x23) value = states[3];
+void i2c_slave_request() {
+    switch (fp_last_reg) {
+        case REG_INT_MASK:
+            Wire1.write(fp_int_mask & 0xFF);
+            Wire1.write((fp_int_mask >> 8) & 0xFF);
+            if (fp_int_mask == 0 || fp_int_mask == INT_READY)
+                fp_clear_int();
+            // If INT_TS: keep INT asserted until master reads REG_TOUCH
+            break;
+        case REG_ENCODER:
+            Wire1.write(0); Wire1.write(0);  // no encoders
+            fp_clear_int();
+            break;
+        case REG_SWITCH:
+            Wire1.write(0);  // no encoder switches
+            fp_clear_int();
+            break;
+        case REG_TOUCH:
+            Wire1.write(fp_event_button);
+            Wire1.write(fp_event_state);
+            Wire1.write(0); Wire1.write(0); Wire1.write(0);
+            fp_clear_int();
+            break;
+        default:
+            Wire1.write(0);
+            break;
+    }
+}
 
-    Wire.write(value);
+// Called from btn_event_cb to report a button press/release to the master
+static void i2c_report_button(uint8_t index, uint8_t state) {
+    fp_event_button = index;
+    fp_event_state  = state;
+    fp_int_mask     = INT_TS;
+    fp_assert_int();
+}
+
+void i2c_slave_init() {
+    pinMode(I2C_INT_PIN, OUTPUT);
+    fp_clear_int();
+    Wire1.begin((uint8_t)I2C_SLAVE_ADDR, I2C_SLAVE_SDA, I2C_SLAVE_SCL);
+    Wire1.onReceive(i2c_slave_receive);
+    Wire1.onRequest(i2c_slave_request);
+    // NOTE: INT_READY signal suppressed here; GPIO26 may be wired to GT911 INT
+    // fp_int_mask = INT_READY; fp_assert_int();
+    Serial.println("I2C slave: addr=0x20 SDA=21 SCL=22 INT=26 (active-LOW)");
 }
 
 // ────────────────────────────────────────────────
@@ -189,9 +248,11 @@ static void btn_event_cb(lv_event_t * e)
             if (data->toggle_state) {
                 lv_obj_set_style_bg_color(data->bg, lv_color_hex(0xFF6600), 0);
                 Serial.printf("Button %d (%s) toggled -> CHECKED\n", idx, button_labels[idx]);
+                i2c_report_button(idx, 1);
             } else {
                 lv_obj_set_style_bg_color(data->bg, lv_color_hex(0xFFE8D0), 0);
                 Serial.printf("Button %d (%s) toggled -> UNCHECKED\n", idx, button_labels[idx]);
+                i2c_report_button(idx, 0);
             }
         }
         else if (code == LV_EVENT_RELEASED || code == LV_EVENT_PRESS_LOST) {
@@ -206,10 +267,12 @@ static void btn_event_cb(lv_event_t * e)
         if (code == LV_EVENT_PRESSED) {
             lv_obj_set_style_bg_color(data->bg, lv_color_hex(0xFFF8F0), 0);
             Serial.printf("Button %d (%s) pressed\n", idx, button_labels[idx]);
+            i2c_report_button(idx, 1);
         }
         else if (code == LV_EVENT_RELEASED || code == LV_EVENT_PRESS_LOST) {
             lv_obj_set_style_bg_color(data->bg, lv_color_hex(0xFFE8D0), 0);
             Serial.printf("Button %d (%s) released\n", idx, button_labels[idx]);
+            i2c_report_button(idx, 0);
         }
     }
 }
@@ -229,6 +292,9 @@ void setup()
     digitalWrite(TFT_BL, HIGH);
     analogWrite(TFT_BL, 100);
 #endif
+
+    // I2C slave init FIRST — Wire1.begin() corrupts Wire (GT911 I2C bus) if called after touch_init()
+    i2c_slave_init();
 
     lv_init();
     delay(20);
@@ -269,10 +335,7 @@ void setup()
     indev_drv.read_cb = my_touchpad_read;
     lv_indev_drv_register(&indev_drv);
 
-    // I2C slave setup (commented out - enable when needed)
-    // Wire.begin(I2C_SLAVE_ADDR);
-    // Wire.onReceive(receiveEvent);
-    // Wire.onRequest(requestEvent);
+    // (I2C slave already initialized above, before touch_init)
 
     // ── Create all 18 buttons in a 6x3 grid ──
     // Following the working project pattern: background obj + imgbtn on top
