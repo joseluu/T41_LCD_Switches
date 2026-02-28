@@ -25,3 +25,12 @@ should be orange like a neon indicator.
 Find or generate a button bitmap with some transparency to look like
 a plastic translucent push button. If python is needed source
 ~/hobby_w/jupyter_nbs/setup.sh to have it in the path
+## 4. implement I2C
+The touch panel aim is to be an alternative to the front panel switches of the T41 transceiver.
+The slave I2C protocol to be implemented is the same as the pico front panel as in this repo: https://github.com/g0orx/pico_frontpanel
+From the pico front panel, do not implement anything related to their implementation of
+the touch panel when using I2c master to talk to GSL1680_TS or FT5206_TS as we have our own lvgl implementation.
+For testing write an independent ESP32 program in subdirectory test/front_panel_i2c the test program
+should act as an I2c Master, receive informations from the slave front panel and display events that it is able to sense.
+The test program will be used in a Heltec Wifi-kit-32 which has a small oled display.
+Communicating should be done the same way as the T41 transceiver does it, refer to file https://github.com/g0orx/SDT/blob/main/G0ORX_FrontPanel_2.cpp communicating uses an interrupt signal beetween the 2 boards, suggest pins to use for this purpose.
