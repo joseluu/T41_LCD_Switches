@@ -37,11 +37,45 @@ Buttons support both momentary and toggle modes. Toggle buttons change the backg
 
 ## I2C communications
 
- - side connector P3 outputs gnd, io35, io22 (SCL), io21(SDA)
- - connect SCL and SDA from this board to Teensy pin 19 (SCL) and pin 18 (SDA)
- - the ESP32 cannot emulate 2 slave devices MCP23017 therefore only address 0x20 is used
- - see manufacturer documentation: https://www.microchip.com/en-us/product/mcp23017
- - device emulates a 32 bits MCP23017 with 2 extra 8 bits ports: GPIOC and GPIOD
+The ESP32 acts as an I2C slave on the **pico_frontpanel protocol** (compatible with g0orx/pico_frontpanel), replacing the T41's mechanical front panel.
+
+### Wiring
+
+The board exposes I2C on the P3 side connector:
+
+| P3 pin | GPIO | Connect to              |
+|--------|------|-------------------------|
+| SDA    | 21   | Teensy pin 18 (SDA)     |
+| SCL    | 22   | Teensy pin 19 (SCL)     |
+| GND    | GND  | GND                     |
+
+GPIO35 is also on P3 but is input-only and is not used.
+
+> **No INT wire is needed.** GPIO26 (the INT output) is not accessible on P3 — it is routed to the on-board audio amplifier. The master reads the slave by polling.
+
+### Protocol
+
+The slave implements the pico_frontpanel register map at I2C address **0x20**:
+
+| Register | Address | Description                              |
+|----------|---------|------------------------------------------|
+| CONFIG   | 0x00    | INT polarity (bit 8: 1=active-HIGH)      |
+| RESET    | 0x01    | Reset                                    |
+| INT_MASK | 0x02    | Pending event flags (2 bytes, read only) |
+| ENCODER  | 0x03    | Encoder counts (not used)                |
+| SWITCH   | 0x04    | Encoder switch (not used)                |
+| TOUCH    | 0x05    | Button event: index (1B) + state (1B)    |
+| LED      | 0x06    | LED control (not used)                   |
+
+INT_MASK bits: `0x0100` = button event pending, `0x8000` = device ready.
+
+### Polling mode
+
+Because the INT pin is not wired to the master, the master polls REG_INT_MASK periodically (every 20 ms in the test program). If the mask is non-zero, the master reads the relevant register (REG_TOUCH for button events), which clears the flag on the slave side.
+
+### Test program
+
+`test/front_panel_i2c/` contains a standalone sketch for a **Heltec WiFi Kit 32** that acts as I2C master and displays button events on its built-in OLED. Only SDA, SCL and GND need to be connected.
 
 ## Software
 
